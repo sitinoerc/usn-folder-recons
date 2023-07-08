@@ -55,7 +55,7 @@ def findNextRecord(infile, journalSize):
                 return (infile.tell() + recordlen)
         except struct.error:
             if infile.tell() >= journalSize:
-                sys.exit()
+                return False
 
 
 
@@ -191,6 +191,7 @@ def main():
     p.add_argument("-f", "--file", help="Parse the given USN journal file")
     p.add_argument("-q", "--quick", help="Parse a large journal file quickly", action="store_true")
     p.add_argument("-v", "--verbose", help="Return all USN properties for each record (JSON)", action="store_true")
+    p.add_argument("-cons", "--construct", help="xxx")
     args = p.parse_args()
 
     if args.file:
@@ -213,21 +214,50 @@ def main():
             dataPointer = findFirstRecord(f)
             f.seek(dataPointer)
 
+        refNumberOne = set()
+        refNumberTwo = set()
+        degreeOne = {}
+        degreeTwo = {}
+
         while True:
             nextRecord = findNextRecord(f, journalSize)
-            u = Usn(f)
+            
+            if nextRecord == False:
+                break
+            
+            try: 
+                u = Usn(f)
+            except:
+                continue
+            
             f.seek(nextRecord)
 
-        
-            if args.verbose:
+            if args.construct:
+                if u.pReferenceNumber == args.construct:
+                    if u.referenceNumber in refNumberOne:
+                        continue
+
+                    else:
+                        refNumberOne.add(u.referenceNumber)
+                        degreeOne[u.referenceNumber] = u.filename
+
+                if u.pReferenceNumber in refNumberOne:
+                    if u.referenceNumber in refNumberTwo:
+                        continue
+
+                    else:
+                        refNumberTwo.add(u.referenceNumber)
+                        degreeTwo[u.referenceNumber] = u.filename       
+
+            elif args.verbose:
                 u.prettyPrint()
 
             elif args.csv:
-                print "{},{},{}".format(u.timestamp, u.filename, u.reason)
+                print "{},{},{},{},{}".format(u.timestamp, u.filename, u.referenceNumber, u.pReferenceNumber, u.reason)
                     
             else:
                 print "{} | {} | {} | {}".format(u.timestamp, u.filename, u.fileAttributes, u.reason)
-
+        
 if __name__ == '__main__':
     main()
 
