@@ -130,7 +130,7 @@ def findNextRecord(infile, journalSize):
                 return infile.tell() + recordLength
         except struct.error:
             if infile.tell() >= journalSize:
-                sys.exit()
+                return False
 
 
 def filetimeToHumanReadable( filetime):
@@ -175,6 +175,7 @@ def main():
     p.add_argument('-s', '--system', help='System name (use with -t)')
     p.add_argument('-t', '--tln', help='TLN ou2tput (use with -s)', action='store_true')
     p.add_argument('-v', '--verbose', help='Return all USN properties for each record (JSON)', action='store_true')
+    p.add_argument('-r', '--reconstruct', help='xxx')
     args = p.parse_args()
 
     journalSize = os.path.getsize(args.file)
@@ -183,16 +184,19 @@ def main():
             i.seek(findFirstRecord(i))
 
             if args.csv:
-                o.write(u'timestamp,filename,fileattr,reason\n'.encode('utf-8', errors='backslashreplace'))
+                o.write(u'timestamp,filename,fileattr,refnum,parentrefnum,reason\n'.encode('utf-8', errors='backslashreplace'))
                 while True:
                     nextRecord = findNextRecord(i, journalSize)
                     recordLength = struct.unpack_from('<I', i.read(4))[0]
                     recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
                     u = parseUsn(i, recordData)
-                    u = u'{0},{1},{2},{3}\n'.format(
+                    print(u)
+                    u = u'{0},{1},{2},{3},{4},{5}\n'.format(
                         u[u'humanTimestamp'],
                         u[u'filename'],
                         u[u'fileAttributes'],
+                        u[u'fileReferenceNumber'],
+                        u[u'parentFileReferenceNumber'],
                         u[u'reason'])
                     o.write(u.encode('utf8', errors='backslashreplace'))
                     i.seek(nextRecord)
@@ -241,6 +245,123 @@ def main():
                     u = json.dumps(parseUsn(i, recordData), indent=4, ensure_ascii=False)
                     o.write(u.encode('utf8', errors='backslashreplace'))
                     o.write(u'\n')
+                    i.seek(nextRecord)
+
+            elif args.reconstruct:
+                parents = set()
+                o.write(u'timestamp,filename,fileattr,refnum,parentrefnum,reason\n'.encode('utf-8', errors='backslashreplace'))
+                
+                while True:
+                    nextRecord = findNextRecord(i, journalSize)
+
+                    if not(nextRecord):
+                        print(parents)
+                        break
+
+                    recordLength = struct.unpack_from('<I', i.read(4))[0]
+                    recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
+                    u = parseUsn(i, recordData)
+                    
+                    if u[u'parentFileReferenceNumber'] == int(args.reconstruct):
+                        parents.add(u[u'fileReferenceNumber'])
+
+                        v = u'.  {0},{1},{2},{3},{4},{5}\n'.format(
+                            u[u'humanTimestamp'],
+                            u[u'filename'],
+                            u[u'fileAttributes'],
+                            u[u'fileReferenceNumber'],
+                            u[u'parentFileReferenceNumber'],
+                            u[u'reason'])
+                        o.write(v.encode('utf8', errors='backslashreplace'))
+
+                        i.seek(nextRecord)
+
+                        while True:
+                            nextRecord = findNextRecord(i, journalSize)
+
+                            if not(nextRecord):
+                                break
+
+                            recordLength = struct.unpack_from('<I', i.read(4))[0]
+                            recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
+                            w = parseUsn(i, recordData)
+
+                            if w[u'parentFileReferenceNumber'] == int(args.reconstruct):
+                                x = u'.  {0},{1},{2},{3},{4},{5}\n'.format(
+                                    w[u'humanTimestamp'],
+                                    w[u'filename'],
+                                    w[u'fileAttributes'],
+                                    w[u'fileReferenceNumber'],
+                                    w[u'parentFileReferenceNumber'],
+                                    w[u'reason'])
+                                
+                                o.write(x.encode('utf8', errors='backslashreplace'))
+
+                            elif w[u'parentFileReferenceNumber'] == u[u'fileReferenceNumber']:
+                                x = u'..  {0},{1},{2},{3},{4},{5}\n'.format(
+                                    w[u'humanTimestamp'],
+                                    w[u'filename'],
+                                    w[u'fileAttributes'],
+                                    w[u'fileReferenceNumber'],
+                                    w[u'parentFileReferenceNumber'],
+                                    w[u'reason'])
+                                
+                                o.write(x.encode('utf8', errors='backslashreplace'))
+                            
+                            else:
+                                break
+                            
+                            i.seek(nextRecord)
+                    
+                    elif u[u'parentFileReferenceNumber'] in parents:
+                        v = u'..  {0},{1},{2},{3},{4},{5}\n'.format(
+                            u[u'humanTimestamp'],
+                            u[u'filename'],
+                            u[u'fileAttributes'],
+                            u[u'fileReferenceNumber'],
+                            u[u'parentFileReferenceNumber'],
+                            u[u'reason'])
+                        o.write(v.encode('utf8', errors='backslashreplace'))
+
+                        i.seek(nextRecord)
+
+                        while True:
+                            nextRecord = findNextRecord(i, journalSize)
+
+                            if not(nextRecord):
+                                break
+
+                            recordLength = struct.unpack_from('<I', i.read(4))[0]
+                            recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
+                            w = parseUsn(i, recordData)
+
+                            if w[u'parentFileReferenceNumber'] == int(args.reconstruct):
+                                x = u'.  {0},{1},{2},{3},{4},{5}\n'.format(
+                                    w[u'humanTimestamp'],
+                                    w[u'filename'],
+                                    w[u'fileAttributes'],
+                                    w[u'fileReferenceNumber'],
+                                    w[u'parentFileReferenceNumber'],
+                                    w[u'reason'])
+                                
+                                o.write(x.encode('utf8', errors='backslashreplace'))
+
+                            elif w[u'parentFileReferenceNumber'] == u[u'fileReferenceNumber']:
+                                x = u'..  {0},{1},{2},{3},{4},{5}\n'.format(
+                                    w[u'humanTimestamp'],
+                                    w[u'filename'],
+                                    w[u'fileAttributes'],
+                                    w[u'fileReferenceNumber'],
+                                    w[u'parentFileReferenceNumber'],
+                                    w[u'reason'])
+                                
+                                o.write(x.encode('utf8', errors='backslashreplace'))
+                            
+                            else:
+                                break
+                            
+                            i.seek(nextRecord)
+                            
                     i.seek(nextRecord)
 
             else:
