@@ -255,7 +255,6 @@ def main():
                     nextRecord = findNextRecord(i, journalSize)
 
                     if not(nextRecord):
-                        print(parents)
                         break
 
                     recordLength = struct.unpack_from('<I', i.read(4))[0]
